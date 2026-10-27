@@ -57,6 +57,7 @@ export NCCL_GIN_PLUGIN=/opt/amazon/ofi-nccl/lib/libnccl-net-ofi.so  # the same l
 export FI_PROVIDER=efa
 export FI_EFA_USE_DEVICE_RDMA=1
 export NCCL_SOCKET_IFNAME=^lo,docker
+export PMIX_MCA_gds=hash
 ```
 
 The JIT variables from [JIT Kernel Compilation](jit.md) apply unchanged. The
@@ -114,7 +115,7 @@ MPIRUN="mpirun -np 16 -N 8 --bind-to none \
   -x PATH -x LD_LIBRARY_PATH -x NCCL_EP_HOME -x NCCL_HOME -x CUDA_HOME \
   -x NCCL_GIN_TYPE -x NCCL_NET_PLUGIN -x NCCL_GIN_PLUGIN \
   -x FI_PROVIDER -x FI_EFA_USE_DEVICE_RDMA -x NCCL_SOCKET_IFNAME \
-  -x NCCL_DEBUG -x NCCL_DEBUG_SUBSYS -x NCCL_EP_JIT_CACHE_DIR"
+  -x NCCL_DEBUG -x NCCL_DEBUG_SUBSYS -x NCCL_EP_JIT_CACHE_DIR -x PMIX_MCA_gds"
 
 # Correctness: HIGH_THROUGHPUT algorithm, FLAT layout.
 ${MPIRUN} ep_test -a ht -L fl
@@ -172,18 +173,17 @@ the same bytes on the wire; 4 threads gave the same as 2, and combine stayed at
 
 - **GIN proxy only.** `NCCL_GIN_TYPE=3` (GDAKI) was not validated on EFA.
   aws-ofi-nccl's GPU-initiated backend, EFA-GDA (`NCCL_GIN_TYPE=5`), does not
-  support strong or VA signals, which NCCL EP's device communicator requires:
-  with NCCL's symmetric GIN kernels left enabled (the default),
-  `ncclEpCreateGroup` fails with
-  `GIN strong signals are required, but the GIN plugin does not support them`.
-  The `NCCL_SYM_GIN_KERNELS_ENABLE=0` setting from the aws-ofi-nccl guide was
-  not run.
+  support strong or VA signals. NCCL EP creates its device communicators with
+  NCCL's default requirements, which include both, so `ncclEpCreateGroup` fails
+  with `GIN strong signals are required, but the GIN plugin does not support them`.
+  The aws-ofi-nccl guide's `NCCL_SYM_GIN_KERNELS_ENABLE=0` applies to NCCL's own
+  symmetric GIN kernels; it does not change NCCL EP's requirements and was not run.
 - **High-Throughput with the FLAT layout only.** Low-Latency mode and the other
   layouts were not exercised.
 - **Two `p5en.48xlarge` nodes only.** More nodes were not run. 32-NIC
   `p5.48xlarge` hits [NVIDIA/nccl#2160](https://github.com/NVIDIA/nccl/issues/2160)
-  during topology detection with NCCL 2.32.3; the fix landed on NCCL's
-  development branch after that release and was not tested here. Two
+  during topology detection with NCCL 2.32.3; the fix is on NCCL's
+  development branch, not in that release, and was not tested here. Two
   `p6-b200.48xlarge` nodes passed `ep_test` and `ep_bench --validate` with an
   earlier revision of the recipe's scripts (built for sm_100), not the committed
   manifest.
